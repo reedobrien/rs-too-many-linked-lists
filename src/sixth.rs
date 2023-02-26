@@ -61,6 +61,10 @@ impl<T> LinkedList<T> {
         unsafe { self.back.map(|node| &mut (*node.as_ptr()).elem) }
     }
 
+    pub fn clear(&mut self) {
+        while let Some(_) = self.pop_front() {}
+    }
+
     pub fn front(&self) -> Option<&T> {
         unsafe { self.front.map(|node| &(*node.as_ptr()).elem) }
         // Same but uses ? which is an early return so maybe don't use it in keeping with the rest
@@ -70,6 +74,32 @@ impl<T> LinkedList<T> {
 
     pub fn front_mut(&mut self) -> Option<&mut T> {
         unsafe { self.front.map(|node| &mut (*node.as_ptr()).elem) }
+    }
+
+    pub fn into_iter(self) -> IntoIter<T> {
+        IntoIter { list: self }
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            front: self.front,
+            back: self.back,
+            len: self.len(),
+            _boo: PhantomData,
+        }
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<T> {
+        IterMut {
+            front: self.front,
+            back: self.back,
+            len: self.len(),
+            _boo: PhantomData,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     pub fn push_front(&mut self, elem: T) {
@@ -169,44 +199,102 @@ impl<T> LinkedList<T> {
     pub fn len(&self) -> usize {
         self.len
     }
+}
 
-    pub fn iter(&self) -> Iter<T> {
-        Iter {
-            front: self.front,
-            back: self.back,
-            len: self.len(),
-            _boo: PhantomData,
-        }
-    }
+impl<T: Clone> Clone for LinkedList<T> {
+    fn clone(&self) -> Self {
+        let mut new = Self::new();
+        self.iter().for_each(|item| new.push_back(item.clone()));
 
-    pub fn iter_mut(&mut self) -> IterMut<T> {
-        IterMut {
-            front: self.front,
-            back: self.back,
-            len: self.len(),
-            _boo: PhantomData,
-        }
-    }
-
-    pub fn into_iter(self) -> IntoIter<T> {
-        IntoIter { list: self }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn clear(&mut self) {
-        while let Some(_) = self.pop_front() {}
+        new
     }
 }
 
-impl<'a, T> IntoIterator for &'a LinkedList<T> {
-    type IntoIter = Iter<'a, T>;
-    type Item = &'a T;
+impl<T> Default for LinkedList<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> DoubleEndedIterator for IntoIter<T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.list.pop_back()
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            self.back.map(|node| unsafe {
+                self.len -= 1;
+                self.back = (*node.as_ptr()).back;
+                &(*node.as_ptr()).elem
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.len > 0 {
+            self.back.map(|node| unsafe {
+                self.len -= 1;
+                self.back = (*node.as_ptr()).back;
+                &mut (*node.as_ptr()).elem
+            })
+        } else {
+            None
+        }
+    }
+}
+
+impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl<T> ExactSizeIterator for IntoIter<T> {
+    fn len(&self) -> usize {
+        self.list.len
+    }
+}
+
+impl<'a, T> ExactSizeIterator for Iter<'a, T> {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl<T> IntoIterator for LinkedList<T> {
+    type IntoIter = IntoIter<T>;
+    type Item = T;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        self.into_iter()
+    }
+}
+
+// impl<'a, T> IntoIterator for &'a LinkedList<T> {
+//     type IntoIter = Iter<'a, T>;
+//     type Item = &'a T;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.iter()
+//     }
+// }
+
+impl<T> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.list.pop_front()
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.list.len, Some(self.list.len))
     }
 }
 
@@ -234,26 +322,6 @@ impl<'a, T> Iterator for Iter<'a, T> {
     }
 }
 
-impl<'a, T> DoubleEndedIterator for Iter<'a, T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.len > 0 {
-            self.back.map(|node| unsafe {
-                self.len -= 1;
-                self.back = (*node.as_ptr()).back;
-                &(*node.as_ptr()).elem
-            })
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a, T> ExactSizeIterator for Iter<'a, T> {
-    fn len(&self) -> usize {
-        self.len
-    }
-}
-
 impl<'a, T> Iterator for IterMut<'a, T> {
     type Item = &'a mut T;
 
@@ -275,74 +343,6 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.len, Some(self.len))
-    }
-}
-
-impl<'a, T> DoubleEndedIterator for IterMut<'a, T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.len > 0 {
-            self.back.map(|node| unsafe {
-                self.len -= 1;
-                self.back = (*node.as_ptr()).back;
-                &mut (*node.as_ptr()).elem
-            })
-        } else {
-            None
-        }
-    }
-}
-
-impl<'a, T> ExactSizeIterator for IterMut<'a, T> {
-    fn len(&self) -> usize {
-        self.len
-    }
-}
-
-impl<T> IntoIterator for LinkedList<T> {
-    type IntoIter = IntoIter<T>;
-    type Item = T;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.into_iter()
-    }
-}
-
-impl<T> Iterator for IntoIter<T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.list.pop_front()
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.list.len, Some(self.list.len))
-    }
-}
-
-impl<T> DoubleEndedIterator for IntoIter<T> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        self.list.pop_back()
-    }
-}
-
-impl<T> ExactSizeIterator for IntoIter<T> {
-    fn len(&self) -> usize {
-        self.list.len
-    }
-}
-
-impl<T> Default for LinkedList<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<T: Clone> Clone for LinkedList<T> {
-    fn clone(&self) -> Self {
-        let mut new = Self::new();
-        self.iter().for_each(|item| new.push_back(item.clone()));
-
-        new
     }
 }
 
